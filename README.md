@@ -9,6 +9,6 @@
 🔴Singing (RVC)  
 # HOW TO USE
 1. `git clone https://github.com/CaTpiN9791/DISCORD_STT_AI.git`
-2. `Create your bot at [HERE](https://discord.com/developers)`
+2. Create your bot at [HERE](https://discord.com/developers)
 3. `Add your token at TOKEN.env`
    
