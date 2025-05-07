@@ -251,7 +251,7 @@ async def play_tts_response(ctx, text):
     torchaudio.save(output_wav, torch.tensor(output["wav"]).unsqueeze(0), sample_rate=config.audio["sample_rate"])
     ctx.voice_client.play(discord.FFmpegPCMAudio(output_wav), after= print(f"{bot}: {text}"))
     print(f"✅ {bot}:", output_wav)
-    await channel.send(f"Muffin: {text}")
+    await channel.send(f"{bot}: {text}")
 
 async def vad_timeout_checker():
     global vad_instance
