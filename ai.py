@@ -22,6 +22,7 @@ WHISPER_MODEL = os.getenv("WHISPER_MODEL")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
 CHANNAL_ID = os.getenv("CHANNAL_ID")
 VOICE_DIR = os.getenv("VOICE_DIR")
+TIMEOUT_DURATION = os.getenv("TIMEOUT_DURATION")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 config_path = os.path.join(VOICE_DIR, "config.json")
@@ -255,7 +256,6 @@ async def play_tts_response(ctx, text):
 
 async def vad_timeout_checker():
     global vad_instance
-    TIMEOUT_DURATION = 0.8
     while True:
         await asyncio.sleep(1)
         if vad_instance is None:
