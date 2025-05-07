@@ -3,7 +3,7 @@
 ⚠️Some features have not been implemented. Please understand.
 # FEATURES  
 🟢TTS (using finetuned model)  
-🟢AI (Llama 3.2 3B)  
+🟢AI (I used Llama 3.2 3B)  
 🟢STT (whisper)  
 🔴Video call (Live2D)  
 🔴Singing (RVC)  
