@@ -26,8 +26,8 @@ VOICE_DIR = os.getenv("VOICE_DIR")
 device = "cuda" if torch.cuda.is_available() else "cpu"
 config_path = os.path.join(VOICE_DIR, "config.json")
 path = os.path.join(VOICE_DIR, "model.pth")
-reference_wav = r"reference.wav"
-output_wav = r"output.wav"
+reference_wav = r"reference\reference.wav"
+output_wav = r"output\output.wav"
 torch.load(path, map_location=device, weights_only=True)
 config = XttsConfig()
 config.load_json(config_path)
