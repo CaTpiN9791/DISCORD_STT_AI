@@ -7,7 +7,8 @@ import discord
 from discord.ext import commands
 import wave
 import time
-import audioop
+from pydub import AudioSegment
+import io
 import queue
 import torch
 import torchaudio
@@ -20,9 +21,9 @@ BOT_NAME = os.getenv("BOT_NAME")
 TOKEN = os.getenv("DISCORD_TOKEN")
 WHISPER_MODEL = os.getenv("WHISPER_MODEL")
 OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
-CHANNAL_ID = os.getenv("CHANNAL_ID")
+CHANNEL_ID = os.getenv("CHANNEL_ID")
 VOICE_DIR = os.getenv("VOICE_DIR")
-TIMEOUT_DURATION = os.getenv("TIMEOUT_DURATION")
+TIMEOUT_DURATION = os.getenv("TIMEOUT_DURATION", "10.0")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 config_path = os.path.join(VOICE_DIR, "config.json")
@@ -55,11 +56,13 @@ MIN_SPEECH_DURATION = 0.2
 FRAME_DURATION = 0.02
 
 voice_processing_queue = queue.Queue()
+channel = None
 
-class VoiceActivityDetector(discord.sinks.WaveSink):
-    def __init__(self, ctx):
-        super().__init__()
+class VoiceRecorder:
+    def __init__(self, bot, ctx):
+        self.bot = bot
         self.ctx = ctx
+        self.audio_data = {}
         self.last_audio_time = {}
         self.is_speaking = {}
         self.speech_start_time = {}
@@ -67,11 +70,43 @@ class VoiceActivityDetector(discord.sinks.WaveSink):
         self.buffer_data = {}
         self.recent_rms_values = {}
         self.consecutive_silence_frames = {}
+        self.audio_queue = asyncio.Queue()
+        self._running = True
+        self.recording_task = None
+        self.recording = True
         
-    def write(self, data, user_id):
-        user = bot.fetch_user(user_id)
-        super().write(data, user_id)
+    async def start_recording(self):
+        if self.ctx.voice_client is None:
+            return
+        
+        self.recording_task = asyncio.create_task(self._record_audio())
+        
+    async def stop_recording(self):
+        self._running = False
+        if self.recording_task:
+            self.recording_task.cancel()
+            try:
+                await self.recording_task
+            except asyncio.CancelledError:
+                pass
+        
+    async def _record_audio(self):
+        if self.ctx.voice_client is None:
+            return
+            
+        self._running = True
+        self.ctx.voice_client.listen(self._audio_packet_listener)
+        
+        while self._running and self.ctx.voice_client and self.ctx.voice_client.is_connected():
+            await asyncio.sleep(0.1)
+            
+    def _audio_packet_listener(self, user, audio_bytes):
+        user_id = user.id
         current_time = time.time()
+        
+        if user.bot:
+            return
+            
         if user_id not in self.buffer_data:
             self.buffer_data[user_id] = bytearray()
             self.is_speaking[user_id] = False
@@ -79,10 +114,18 @@ class VoiceActivityDetector(discord.sinks.WaveSink):
             self.silence_start_time[user_id] = current_time
             self.recent_rms_values[user_id] = []
             self.consecutive_silence_frames[user_id] = 0
-        self.buffer_data[user_id].extend(data)
+            
+        self.buffer_data[user_id].extend(audio_bytes)
 
         try:
-            rms = audioop.rms(data, 2)
+            # Convert bytes to AudioSegment
+            audio_segment = AudioSegment(
+                data=bytes(audio_bytes),
+                sample_width=2,
+                frame_rate=48000,
+                channels=2
+            )
+            rms = audio_segment.rms
             self.recent_rms_values[user_id].append(rms)
             if len(self.recent_rms_values[user_id]) > 5:
                 self.recent_rms_values[user_id].pop(0)
@@ -92,7 +135,9 @@ class VoiceActivityDetector(discord.sinks.WaveSink):
             print(f"RMS error: {e}")
             rms = 0
             avg_rms = 0
+            
         self.last_audio_time[user_id] = current_time
+        
         if avg_rms > SILENCE_THRESHOLD:
             self.consecutive_silence_frames[user_id] = 0
             if not self.is_speaking[user_id]:
@@ -137,7 +182,6 @@ async def process_voice_chunk(user_id, buffer_data, ctx):
         if not transcript.strip():
             return
         print(f"Recognized text: ({user.name}) {transcript}")
-        await channel.send(f"{user.name}: {transcript}")
         response = process_with_ollama(transcript)
         if ctx.voice_client and ctx.voice_client.is_connected():
             await play_tts_response(ctx, response)
@@ -160,51 +204,56 @@ async def voice_processing_task():
 async def on_ready():
     global channel
     print(f"{bot.user} is ready!")
-    channel = bot.get_channel(CHANNAL_ID)
+    channel = await bot.fetch_channel(CHANNEL_ID)
+    print(f"Connected channel: {channel}")
+    if channel is None:
+        print(f"Warning: Could not find channel with ID {CHANNEL_ID}. Check your CHANNEL_ID in .env file.")
+        print("Available channels:")
+        for guild in bot.guilds:
+            for ch in guild.channels:
+                if isinstance(ch, discord.TextChannel):
+                    print(f"- {ch.name}: {ch.id}")
+    else:
+        await channel.send("Bot Turned On!")
+        
     bot.loop.create_task(voice_processing_task())
     bot.loop.create_task(vad_timeout_checker())
-    await channel.send("Bot Turned On!")
 
-@bot.command()
+@bot.slash_command(name="join", description="Join a voice channel")
 async def join(ctx):
     if ctx.author.voice is None:
-        await ctx.send("Connect to a voice channel first!")
+        await ctx.respond("Connect to a voice channel first!")
         return
 
-    channel = ctx.author.voice.channel
+    voice_channel = ctx.author.voice.channel
     try:
         if ctx.voice_client is not None:
-            await ctx.voice_client.move_to(channel)
+            await ctx.voice_client.move_to(voice_channel)
         else:
-            await channel.connect()
-        await ctx.send(f"Connected to {channel}!")
+            await voice_channel.connect()
+        await ctx.respond(f"Connected to {voice_channel}!")
         await start_vad_recording(ctx)
     except Exception as e:
-        await ctx.send(f"Error Occured: {e}")
+        await ctx.respond(f"Error Occured: {e}")
 
-@bot.command()
+@bot.slash_command(name="leave", description="Leave the voice channel")
 async def leave(ctx):
     if ctx.voice_client is not None:
-        if ctx.voice_client.recording:
-            ctx.voice_client.stop_recording()
+        global vad_instance
+        if vad_instance is not None:
+            await vad_instance.stop_recording()
+            vad_instance = None
         await ctx.voice_client.disconnect()
-        await ctx.send("Disconnected from the voice channel.")
+        await ctx.respond("Disconnected from the voice channel.")
     else:
-        await ctx.send("Not connected to any voice channel.")
+        await ctx.respond("Not connected to any voice channel.")
 
 async def start_vad_recording(ctx):
     global vad_instance
     try:
-        vad_sink = VoiceActivityDetector(ctx)
-        vad_instance = vad_sink
-        ctx.voice_client.start_recording(
-            vad_sink,
-            ctx
-        )
+        vad_instance = VoiceRecorder(bot, ctx)
+        await vad_instance.start_recording()
         await ctx.send("Starting voice record. If you speak and remain silent for a while, it will be processed automatically.")
-        while ctx.voice_client and ctx.voice_client.is_connected():
-            await asyncio.sleep(1)
-            
     except Exception as e:
         print(f"VAD error: {e}")
         await ctx.send(f"Error occured while starting record: {e}")
@@ -215,7 +264,7 @@ def transcribe_audio(file_path):
         return result["text"]
     except Exception as e:
         print(f"Error occured while recognizing voice: {e}")
-        return
+        return ""
 
 def process_with_ollama(text):
     try:
@@ -250,12 +299,14 @@ async def play_tts_response(ctx, text):
     speed=1.0,
     )
     torchaudio.save(output_wav, torch.tensor(output["wav"]).unsqueeze(0), sample_rate=config.audio["sample_rate"])
-    ctx.voice_client.play(discord.FFmpegPCMAudio(output_wav), after= print(f"{bot}: {text}"))
-    print(f"✅ {bot}:", output_wav)
-    await channel.send(f"{bot}: {text}")
+    
+    if ctx.voice_client and ctx.voice_client.is_connected():
+        ctx.voice_client.play(discord.FFmpegPCMAudio(output_wav))
+        print(f"✅ {BOT_NAME}: {text}")
+        await channel.send(f"{BOT_NAME}: {text}")
 
 async def vad_timeout_checker():
-    global vad_instance
+    global vad_instance, channel
     while True:
         await asyncio.sleep(1)
         if vad_instance is None:
@@ -265,7 +316,7 @@ async def vad_timeout_checker():
             last_time = vad_instance.last_audio_time.get(user_id, current_time)
             if vad_instance.is_speaking.get(user_id, False):
                 if current_time - last_time > TIMEOUT_DURATION:
-                    print(f"[Timeout detected] User {user_id} is silent for {TIMEOUT_DURATION}seconds! Processing voice data information.")
+                    print(f"[Timeout detected] User {user_id} is silent for {TIMEOUT_DURATION} seconds! Processing voice data information.")
                     await channel.send(f"[Timeout detected] User {user_id} is silent for {TIMEOUT_DURATION} seconds! Assume to end the conversation.")
                     buffer_copy = bytes(vad_instance.buffer_data.get(user_id, b""))
                     if len(buffer_copy) > 0:
