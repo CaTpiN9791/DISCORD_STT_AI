@@ -297,12 +297,12 @@ async def play_tts_response(ctx, text):
     text=text,
     speaker_wav=reference_wav,
     language=language,
-    temperature=0.75,
-    length_penalty=1.0,
-    repetition_penalty=5.0,
-    top_k=50,
-    top_p=0.85,
-    speed=1.0,
+    temperature=TEMPERATURE,
+    length_penalty=LENGTH_PENALTY,
+    repetition_penalty=REPETITION_PENALTY,
+    top_k=TOP_K,
+    top_p=TOP_P,
+    speed=SPEED,
     )
     torchaudio.save(output_wav, torch.tensor(output["wav"]).unsqueeze(0), sample_rate=config.audio["sample_rate"])
     
