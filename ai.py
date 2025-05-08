@@ -24,6 +24,12 @@ OLLAMA_MODEL = os.getenv("OLLAMA_MODEL")
 CHANNEL_ID = os.getenv("CHANNEL_ID")
 VOICE_DIR = os.getenv("VOICE_DIR")
 TIMEOUT_DURATION = os.getenv("TIMEOUT_DURATION", "10.0")
+TEMPERATURE = os.getenv("TEMPERATURE")
+LENGTH_PENALTY = os.getenv("LENGTH_PENALTY")
+REPETITION_PENALTY = os.getenv("REPETITION_PENALTY")
+TOP_K = os.getenv("TOP_K")
+TOP_P = os.getenv("TOP_P")
+SPEED = os.getenv("SPEED")
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 config_path = os.path.join(VOICE_DIR, "config.json")
