@@ -13,7 +13,7 @@ This program supports `python >= 3.7, < 3.9`  or `python >= 3.10, < 3.11`
 2. `git clone https://github.com/CaTpiN9791/DISCORD_STT_AI.git`
 3. cd `DISCORD_STT_AI`
 4. pip install -r requirements.txt
-5. Create your bot at [HERE](https://discord.com/developers)
-6. Fill requirements in the .env file
-7. Add your bot to Discord
+5. Create your discord bot at [HERE](https://discord.com/developers)
+7. Fill requirements in the .env file
+8. Add your bot to Discord
    
