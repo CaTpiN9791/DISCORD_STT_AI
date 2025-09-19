@@ -9,7 +9,7 @@
 🔴Singing (RVC)  
 # INSTALL
 This program supports `python >= 3.7, < 3.9`  or `python >= 3.10, < 3.11`
-1. Install Ollama at [HERE](https://ollama.com/)
+1. Install Ollama at [HERE](https://ollama.com/download)
 2. `git clone https://github.com/CaTpiN9791/DISCORD_STT_AI.git`
 3. cd `DISCORD_STT_AI`
 4. pip install -r requirements.txt
